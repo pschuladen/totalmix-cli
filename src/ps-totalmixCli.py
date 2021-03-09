@@ -10,22 +10,49 @@ import argparse
 import threading
 import os
 import time, datetime
+import sys
 
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description='Command line tool for controlling totalmix from RME')
+actionParser = parser.add_subparsers(title='actions')#add_mutually_exclusive_group(required=False)
+# subParser = parser.add_subparsers(help='actions')
+
 parser.add_argument('-i', '--interactive', action='count', help='run in interactive mode')
-parser.add_argument('-f', '--fetch', action='count', help='fetch all device properties')
+parser.add_argument('-f', '--fetch', action='count', default=0, help='fetch device layout and properties, use -ff for also fetching all channel sends (may take a while depending on channel count')
 parser.add_argument('-F', '--file', default='tm-fetched.json', help='use prefetched values from file or fetch and write to file if -f')
-parser.add_argument('-o', '--port', default=2, help='either 1,2,3 or 4, default is 2 for second default osc-control (9002:localhost:7002')
+parser.add_argument('-o', '--port', type=int,  default=2, help='either 1,2,3 or 4, default is 2 for second default osc-control (9002:localhost:7002')
 parser.add_argument('-r', '--remote', help='<portTmOut>:<tm-ip>:<tmReceive>, e.g. 9002:192.168.178.27:7002 for local control for default osc-control 2'
-                                           ' overwrites -c')
-parser.add_argument('-v', '--verbose', action='count', help='verbosity mode')
+                                           ' overwrites -o')
+parser.add_argument('-v', '--verbose', action='count', help='verbosity level, no function yet')
 
-parser.add_argument('-a', '--action', default='set', help='action to perform. set/copy default:set')
-parser.add_argument('-p', '--parameter', default='', help='parameter to set.')
-parser.add_argument('-vf', '--value', type=float, default=0, help='number-value to set to from 0 to 1')
-parser.add_argument('-val' '--realvalue', default='', help='real vlaue e.g. "300hz" or "-6db"')
-parser.add_argument('-ch', '--channel', default='', help='channel to process starting with 1, e.g. "output.1:3,6,13:16", "playback:1,2,3,4,5", "input:[5:10]"')
+# setParser = subParser.add_parser('--set', help='setvalues')
+setParser = actionParser.add_parser('set', help='set parameter, "set -h" for help')
+setParser.set_defaults(selectedAction='set')
+setParser.add_argument('channel', action='store', help='channel to process starting with index 1, layer and channels are divided with  a ".", channelrange ":", different channels/-ranges ","e.g. "output.1:3,6,13:16", "playback.1,2,3,4,5", "input.5:10"')
+setParser.add_argument('parameter', action='store', help='parameter to set')
+setParser.add_argument('value', action='store', type=float, help='value to set to')
+setParser.add_argument('-f', '--fast', action='store_true', help='"fast-mode":set values fast using the prefetchted data. Might not set correctly if changed parameters since fetch. NOT IMPLEMENTED YET')
+
+copyParser = actionParser.add_parser('copy', help='copy a parameter from a channel, "copy -h" for help, NOT IMPLEMENTED YET')
+copyParser.set_defaults(selectedAction='copy')
+daemonParser = actionParser.add_parser('daemon', help='run as daemon, e.g. watch a channel for synchronising Eqs, NOT IMPLEMENTED YET')
+copyParser.set_defaults(selectedAction='daemon')
+# setParser.add_argument('parameter', help='parameter to set')
+# setParser.add_argument('value', help='Value of paraemter')
+# setParser.add_argument('channel', help='channel to perform action on starting with index 1, layer and channels are divided with ".", channelranges ":", different channels/-ranges ","e.g. "output.1:3,6,13:16", "playback.1,2,3,4,5", "input.5:10"')
+
+# parseAction = subParser.add_parser('-a', help='perform action (copy is not implemented yet)')
+
+#
+# parseAction.add_argument('parameter', default='', help='parameter to set.')
+# parseAction.add_argument('value', default=0, help='number value to set to 0 - 1 ')
+# parseAction.add_argument('channel', default='', help='channel to perform action on starting with index 1, layer and channels are divided with ".", channelranges ":", different channels/-ranges ","e.g. "output.1:3,6,13:16", "playback.1,2,3,4,5", "input.5:10"')
+# parser.add_argument('-a', '--action', default=None, choices=['set', 'copy'], help='perform action (copy is not implemented yet)')
+# parser.add_argument('-p', '--parameter', default='', help='parameter to set.')
+# parser.add_argument('-vf', '--value', type=float, default=0, help='number-value to set to from 0 to 1')
+# parser.add_argument('-val' '--realvalue', default='', help='real vlaue e.g. "300hz" or "-6db"')
+# parser.add_argument('-ch', '--channel', default='', help='channel to process starting with index 1, layer and channels are divided with  a ".", channelrange ":", different channels/-ranges ","e.g. "output.1:3,6,13:16", "playback.1,2,3,4,5", "input.5:10"')
+
 
 
 
@@ -315,6 +342,8 @@ def startInit():
             elif mode == 1:
                 taskStack.append(setVolumesFetched)
 
+        # if not (shallFetchProperties and shallFetchVolumes)
+
 
         taskStack.append(finishInit)
         checkTaskStack()
@@ -326,7 +355,7 @@ def finishInit():
     print('finished init')
     print('opentasks:', taskStack)
 
-    if args.fetch and args.file:
+    if (shallFetchVolumes or shallFetchProperties) and args.file:
         # print('filename', args.file)
         fname = args.file
         with open(fname, 'w') as fp:
@@ -346,9 +375,14 @@ def finishInit():
 
     verifyTargetChannels()
     if targetParameter:
-        print(' start setting parameter', targetParameter, targetValue, 'for channels', channelsToSet, 'on layer', layerToSet)
+        _channelsToSet = set()
+        for _ch in channelsToSet:
+            _channelsToSet.add(_ch+1)
+        print(' start setting parameter', targetParameter, targetValue, 'for channels', _channelsToSet, 'on layer', layerToSet)
     else:
         print('no parameter to set')
+
+    # print('channelsss', channelsToSet)
 
     if channelsToSet:
         prepareSettingValues()
@@ -356,11 +390,98 @@ def finishInit():
         exitProgram()
 
 
+def setValueWithSubDicts(targetDict:dict, keylist:[], value):
+    if len(keylist)>1:
+        key = keylist.pop(0)
+        subDict: dict
+        if key in targetDict.keys():
+            subDict = targetDict[key]
+        else:
+            subDict = {}
+            targetDict[key] = subDict
+        setValueWithSubDicts(subDict, keylist, value)
+
+    else:
+        # print('setVlaue tree', targetDict, keylist, value)
+        targetDict[keylist.pop()] = value
+
+
+def readPrefetchFile(fname:str) -> bool:
+    everythingsFine = True
+    global channelDataByName,channelNamesByIndex, outputVolumes, outputReceives, channelSends
+    try:
+        with open(fname) as dicF:
+            data = json.load(dicF)
+            print('using layout fetched at', datetime.datetime.fromtimestamp(data[fetchtime]))
+            channelDataByName = data['channel properties']
+            channelNamesByIndex = data['channel indices']
+            _tmpOutputReceives = data['output receives']
+            _tmpOutputVolumes = data['output volumes']
+            # _tmpChannelSends = data['channel sends']
+
+
+            for chName in channelDataByName[output].keys():
+
+                idx = channelNamesByIndex[output].index(chName)
+                if str(idx) in data['output volumes'].keys() and chName in data['output volumes'].keys():
+                    outDic = data['output volumes'][chName]
+                    outputVolumes[idx] = outDic
+                    outputVolumes[chName] = outDic
+
+
+            for _layer, _outChannels in _tmpOutputReceives.items():
+                for _outCh, _sendChannels in _outChannels.items():
+                    for _sendCh, _data in _sendChannels.items():
+                        setValueWithSubDicts(outputReceives, [_layer, _outCh, _sendCh], _data)
+                        setValueWithSubDicts(channelSends, [_layer, _sendCh, _outCh], _data)
+
+            # fetchDict = {}
+            # for _layer, _channels in channelNamesByIndex.items():
+            #     fetchDict[_layer] = set()
+            #     _pcName = ''
+            #     for sChan, _cName in enumerate(_channels):
+            #         if not _pcName == _cName:
+            #             _pcName = _cName
+            #             fetchDict[_layer].add(sChan)
+
+
+            # for _layer in [input, playback]:
+            #     outputReceives[_layer] = {}
+            #     channelSends[_layer] = {}
+            #     for _ch in fetchDict[_layer]:
+            #         for _out in fetchDict[output]:
+            #             print('bis ich hier komme ich', _ch, _out)
+            #             print('das kann ich lesen', _tmpOutputReceives)
+            #             _chDict = _tmpOutputReceives[str(_out)][str(_ch)]
+            #             if not _ch in channelSends[_layer].keys():
+            #                 channelSends[_layer][int(_ch)] = {}
+            #             if not _ch in outputReceives[_layer].keys():
+            #                 outputReceives[_layer][int(_ch)] = {}
+            #             channelSends[_layer][int(_ch)][int(_out)] = _chDict
+            #             outputReceives[_layer][int(_out)][int(_ch)] = _chDict
+
+        dicF.close()
+
+
+
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+        print('CAUTION no data file found, or data corrupted')
+        everythingsFine = False
+
+    if everythingsFine:
+        global numberTmChannels
+        numberTmChannels = len(channelNamesByIndex[input])
+
+    return everythingsFine
+
+
 def verifyTargetChannels():
 
     while (channelNameRanges):
         chRange = channelNameRanges.pop()
         if chRange == 'all':
+            print('all channels', numberTmChannels)
             for c in range(numberTmChannels):
                 channelsToSet.add(c)
         else:
@@ -548,6 +669,8 @@ if args.interactive:
 
 fetchtime = 'fetchtime'
 if args.fetch and args.fetch > 0:
+    # shallFetchVolumes = True
+    # shallFetchProperties = True
     shallFetchProperties = args.fetch > 0
     shallFetchVolumes = args.fetch > 1
 else:
@@ -556,19 +679,21 @@ else:
     shallFetchProperties = False
 
     if args.file:
-        try:
-            with open(args.file) as dicF:
-                data = json.load(dicF)
-                print('using layout fetched at', datetime.datetime.fromtimestamp(data[fetchtime]))
-                channelDataByName = data['channel properties']
-                channelNamesByIndex = data['channel indices']
-                outputVolumes = data['output volumes']
-                outputReceives = data['output receives']
-                channelSends = data['channel sends']
-            dicF.close()
-
-        except:
-            print('CAUTION no data file found')
+        readPrefetchFile(args.file)
+        # try:
+        #     with open(args.file) as dicF:
+        #         data = json.load(dicF)
+        #         print('using layout fetched at', datetime.datetime.fromtimestamp(data[fetchtime]))
+        #         channelDataByName = data['channel properties']
+        #         channelNamesByIndex = data['channel indices']
+        #         outputVolumes = data['output volumes']
+        #         outputReceives = data['output receives']
+        #         channelSends = data['channel sends']
+        #
+        #     dicF.close()
+        #
+        # except:
+        #     print('CAUTION no data file found')
 
 
 if args.remote:
@@ -577,24 +702,39 @@ if args.remote:
     sendAddress = remoteParams[1]
     sendPort = remoteParams[2]
 else:
-    sendPort = 7000 + args.port
-    rcvPort = 9000 + args.port
+    sendPort = 7000 + int(args.port)
+    rcvPort = 9000 + int(args.port)
 
 
 #INTIALISE
 # startInit()
+print('arguments are __', args)
 
-targetParameter = args.parameter
+selectedAction = ''
+try:
+    selectedAction = args.selectedAction
+except:
+    pass
+
+if selectedAction == 'set':
+    targetParameter = args.parameter
+    targetValue = args.value
+    targetChannels = args.channel
+else:
+    targetParameter = ''
+    targetValue = None
+    targetChannels = ''
+
 targetOsc = '/2/{}'.format(targetParameter).encode()
-targetValue = args.value
+
 parameterIsToggle = True
 
 
 channelsToSet = set()
 channelNameRanges = set()
 layerToSet = ''
-if args.channel:
-    channelArgs = args.channel.split('.')
+if targetChannels:
+    channelArgs = targetChannels.split('.')
     _layer = channelArgs[0]
     # splitIdx = args.channel.find('.')
     # if splitIdx > 0:
@@ -609,29 +749,23 @@ if args.channel:
     # except:
     #     print('ERROR something wrong with layer selection')
     if _layer in ['input', 'output', 'playback']:
-        #TODO: dummes Konstrukt wegmachen
+
         _layerNames = {
             'input': input,
             'output': output,
             'playback': playback
         }
-        layerToSet =  _layerNames[_layer]
-
-        if len(channelArgs)==1 or channelArgs[0] in ['', 'all', ':']:
+        layerToSet = _layerNames[_layer]
+        if len(channelArgs) == 1 or channelArgs[0] in ['', 'all', ':'] \
+                or (len(channelArgs)==2 and channelArgs[1]==''):
             channelNameRanges.add('all')
 
         else:
             _channelsRaw = channelArgs[1].split(',')
 
-            # try:
-            #     _channelsRaw = _channelsRaw.split(',')
-            # except:
-            #     _channelsRaw = [_channelsRaw]
-
             _channelStrings = set()
 
             for _ch in _channelsRaw:
-
                 try:
                     channelsToSet.add(int(_ch)-1)
                 except:
@@ -639,18 +773,15 @@ if args.channel:
 
             for _chStr in _channelStrings:
 
-
-                _chR = _chStr[1:-1]
-                # print('channel is ', _chR)
                 try:
-                    _chR = _chR.split(':')
+                    _chStr = _chStr.split(':')
                     # print('splitted', _chR)
                     try:
-                        for c in range(int(_chR[0])-1, int(_chR[1])):
+                        for c in range(int(_chStr[0]) - 1, int(_chStr[1])):
                             channelsToSet.add(c)
                     except:
-                        if len(_chR) == 2:
-                            channelNameRanges.add((_chR[0], _chR[1]))
+                        if len(_chStr) == 2:
+                            channelNameRanges.add((_chStr[0], _chStr[1]))
                         else:
                             print('something wrong with channel range', _chStr)
                 except:
@@ -661,8 +792,7 @@ if args.channel:
         print('layer is missing in -ch', args.channel)
 
 
-if args.action == 'set':
-    pass
+
 
 
 toTM = OSCClient(address=sendAddress, port=sendPort)
