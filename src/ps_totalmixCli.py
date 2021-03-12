@@ -68,8 +68,6 @@ def oscR_receivedTmData(address, *args):
 
         if settingTargetValue:
             checkValue()
-    # elif sOsc[0:2] == '/1':
-    #     pass
     else:
         return
 
@@ -131,6 +129,7 @@ def oscR_tmpChannelDataMode1(fader:int, key:str, *args):
     tmpChannelDataMode1[key][fader] = value
 
     if fader == 1 and key == 'name':
+        global tmpChannelName
         tmpChannelName = value
         global currentChIndex
         if value in channelNamesByIndex:
@@ -160,14 +159,6 @@ def checkTaskStack(*args):
         print('no tasks on stack')
         timeout = scheduleTimeOut()
         timeout.start()
-
-    # try:
-    #     # print(taskStack[0])
-    #
-    #     taskStack.pop(0)()
-    # except:
-    #     print('no tasks on stack')
-
 
 
 def oscS_goToLayer(layer: str, mode: int = 2):
@@ -809,46 +800,6 @@ if selectedAction == 'set':
                           "alevEnable"
                             ]
     parameterIsToggle = targetParameter in valuesThatAreToggles
-
-
-    # if targetLayer in ['input', 'output', 'playback']:
-    #
-    #     _layerNames = {
-    #         'input': input,
-    #         'output': output,
-    #         'playback': playback
-    #     }
-    #     layerToSet = _layerNames[targetLayer]
-
-        #####rmeove this
-        # if targetChannels in ['', 'all', ':']:
-        #     channelStrToVerify_1.add('all')
-        # else:
-        #     _channelsRaw = targetChannels.split(',')
-        #
-        #     _channelStrings = set()
-        #
-        #     for _ch in _channelsRaw:
-        #         try:
-        #             channelSet_1.add(int(_ch) - 1)
-        #         except:
-        #             _channelStrings.add(_ch)
-        #
-        #     for _chStr in _channelStrings:
-        #
-        #         try:
-        #             _chStr = _chStr.split(':')
-        #             # print('splitted', _chR)
-        #             try:
-        #                 for c in range(int(_chStr[0]) - 1, int(_chStr[1])):
-        #                     channelSet_1.add(c)
-        #             except:
-        #                 if len(_chStr) == 2:
-        #                     channelStrToVerify_1.add((_chStr[0], _chStr[1]))
-        #                 else:
-        #                     print('something wrong with channel range', _chStr)
-        #         except:
-        #             channelSet_1.add(_chStr)
 
 
 
