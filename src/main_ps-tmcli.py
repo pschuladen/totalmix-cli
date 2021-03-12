@@ -1,6 +1,5 @@
 #dependencies oscpy
 
-
 from oscpy.server import OSCThreadServer
 from oscpy.client import OSCClient
 from functools import partial
@@ -18,7 +17,7 @@ actionParser = parser.add_subparsers(title='actions')#add_mutually_exclusive_gro
 # subParser = parser.add_subparsers(help='actions')
 
 parser.add_argument('-i', '--interactive', action='count', help='run in interactive mode')
-parser.add_argument('-f', '--fetch', action='count', default=0, help='fetch device layout and properties, use -ff for also fetching all channel sends (may take a while depending on channel count')
+parser.add_argument('-f', '--fetch', action='count', default=0, help='fetch device layout and properties, use -ff for also fetching gain matrix (may take a while depending on channel count')
 parser.add_argument('-ft', '--fetchforget', action='store_true', default=0, help='fetch device layout and properties, dont store fetch-file')
 parser.add_argument('-F', '--file', default='tm-fetched.json', help='use prefetched values from file or fetch and write to file if -f')
 parser.add_argument('-o', '--port', type=int,  default=2, help='either 1,2,3 or 4, default is 2 for second default osc-control (9002:localhost:7002')
@@ -53,10 +52,7 @@ copyParser.set_defaults(selectedAction='copy')
 daemonParser = actionParser.add_parser('daemon', help='run as daemon, e.g. watch a channel for synchronising Eqs, NOT IMPLEMENTED YET')
 copyParser.set_defaults(selectedAction='daemon')
 
-
-
 args = parser.parse_args()
-
 
 def oscR_receivedTmData(address, *args):
     sOsc = address.decode()
@@ -809,46 +805,6 @@ if selectedAction == 'set':
                           "alevEnable"
                             ]
     parameterIsToggle = targetParameter in valuesThatAreToggles
-
-
-    # if targetLayer in ['input', 'output', 'playback']:
-    #
-    #     _layerNames = {
-    #         'input': input,
-    #         'output': output,
-    #         'playback': playback
-    #     }
-    #     layerToSet = _layerNames[targetLayer]
-
-        #####rmeove this
-        # if targetChannels in ['', 'all', ':']:
-        #     channelStrToVerify_1.add('all')
-        # else:
-        #     _channelsRaw = targetChannels.split(',')
-        #
-        #     _channelStrings = set()
-        #
-        #     for _ch in _channelsRaw:
-        #         try:
-        #             channelSet_1.add(int(_ch) - 1)
-        #         except:
-        #             _channelStrings.add(_ch)
-        #
-        #     for _chStr in _channelStrings:
-        #
-        #         try:
-        #             _chStr = _chStr.split(':')
-        #             # print('splitted', _chR)
-        #             try:
-        #                 for c in range(int(_chStr[0]) - 1, int(_chStr[1])):
-        #                     channelSet_1.add(c)
-        #             except:
-        #                 if len(_chStr) == 2:
-        #                     channelStrToVerify_1.add((_chStr[0], _chStr[1]))
-        #                 else:
-        #                     print('something wrong with channel range', _chStr)
-        #         except:
-        #             channelSet_1.add(_chStr)
 
 
 
