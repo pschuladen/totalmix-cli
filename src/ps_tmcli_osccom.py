@@ -3,6 +3,7 @@ from oscpy.client import OSCClient
 from functools import partial
 from threading import Timer
 import ps_tm_info as tmi
+import ps_tmcli_tmBase as tmbase
 
 
 
@@ -13,10 +14,10 @@ playback = 'busPlayback'
 def dumdumdummyfunc(*args):
     return False
 
-class tmOscCommunicator(object):
+class tmOscCommunicator(tmbase.TotalmixBaseClass):
 
     channelPropertiesFetched = False
-    channelNamesByIndex = {}
+    # channelNamesByIndex = {}
     channelDataByName = {}
 
     chLimitReached = False
@@ -57,9 +58,9 @@ class tmOscCommunicator(object):
 
         self.timeoutFunction = timeoutFunction
 
-        if database:
-            self.channelNamesByIndex = database['channel indices']
-            self.channelDataByName = database['channel properties']
+        # if database:
+        #     self.channelNamesByIndex = database['channel indices']
+        #     self.channelDataByName = database['channel properties']
 
 
     def oscR_receivedTmData(self, address, *args):
