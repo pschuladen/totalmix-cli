@@ -2,19 +2,19 @@ from oscpy.server import OSCThreadServer
 from oscpy.client import OSCClient
 from functools import partial
 from threading import Timer
-import ps_tm_info as tmi
+# import ps_tm_info as tmi
 import ps_tmcli_tmBase as tmbase
 
 
 
-output = 'busOutput'
-input = 'busInput'
-playback = 'busPlayback'
+# output = 'busOutput'
+# input = 'busInput'
+# playback = 'busPlayback'
 
 def dumdumdummyfunc(*args):
     return False
 
-class tmOscCommunicator(tmbase.TotalmixBaseClass):
+class TmOscCommunicator(tmbase.TotalmixBaseClass):
 
     channelPropertiesFetched = False
     # channelNamesByIndex = {}
@@ -44,10 +44,6 @@ class tmOscCommunicator(tmbase.TotalmixBaseClass):
         self.tmpChannelData = {}
         self.tmpChannelDataMode1 = {'vol': [], 'pan': [], 'name': []}
 
-        self.toTM = OSCClient(address=ipaddress, port=port)
-        self.oscServer = OSCThreadServer(default_handler=self.oscR_receivedTmData)
-        self.oscServer.listen(address='0.0.0.0', port=answer_port, default=True)
-
         self.timeout = Timer(10, dumdumdummyfunc)
 
         self.settingTargetValue = False
@@ -58,21 +54,65 @@ class tmOscCommunicator(tmbase.TotalmixBaseClass):
 
         self.timeoutFunction = timeoutFunction
 
+        self.toTM = OSCClient(address=ipaddress, port=port)
+        self.oscServer = OSCThreadServer(default_handler=self.oscR_receivedTmData)
+        self.oscServer.listen(address='0.0.0.0', port=answer_port, default=True)
+
+        self.setupOscBindings()
+
+
+
+    def setupOscBindings(self):
+
+        for i in [1, 2]:
+            for bus in ['busInput', 'busPlayback', 'busOutput']:
+                oscAddr = ('/' + str(i) + '/' + bus).encode()
+                self.oscServer.bind(oscAddr, partial(self.oscR_setLayer, bus, i))
+
+            sOsc = '/{}/labelSubmix'.format(i)
+            self.oscServer.bind(sOsc.encode(), partial(self.oscR_selectedSubmix, i))
+
+        self.oscServer.bind(b'/2/trackname', partial(self.oscR_setChannelName))
+
+        for i in range(64):
+            sOSc = '/1/labelS{}'.format(i + 1)
+            self.oscServer.bind(sOSc.encode(), partial(self.oscR_countRemoteFader, i + 1))
+            for _key, _par in self.m1_parameters.items():
+                #     if _key, _par in self.m1_parameters.items():
+                sOsc = '/1/{}{}'.format(_par, i+1)
+                self.oscServer.bind(sOsc.encode(), partial(self.oscR_tmpChannelDataMode1, i, _par))
+
+            # sOSc = '/1/volume{}'.format(i + 1)
+            # self.oscServer.bind(sOSc.encode(), partial(self.oscR_tmpChannelDataMode1, i, 'vol'))
+            # sOsc = '/1/pan{}'.format(i + 1)
+            # self.oscServer.bind(sOsc.encode(), partial(self.oscR_tmpChannelDataMode1, i, 'pan'))
+            # sOsc = '/1/trackname{}'.format(i + 1)
+            # self.oscServer.bind(sOsc.encode(), partial(self.oscR_tmpChannelDataMode1, i, 'name'))
+
+        for x in range(64):
+            sOsc = '/1/micgain{}Val'.format(x+1)
+            self.oscServer.bind(sOsc.encode(), self.oscR_checkTmOutMode1complete, x + 1)
+
         # if database:
         #     self.channelNamesByIndex = database['channel indices']
         #     self.channelDataByName = database['channel properties']
 
 
+
     def oscR_receivedTmData(self, address, *args):
         sOsc = address.decode()
         if sOsc[0:2] == '/2':
-            try:
-                self.tmpChannelData[sOsc[3:]] = args[0].decode()
-            except:
-                self.tmpChannelData[sOsc[3:]] = args[0]
+            _param = sOsc[3:]
+            value = args[0] if type(args[0])==float else args[0].decode()
+            self.tmpChannelData[_param] = value
+            # try:
+            #     self.tmpChannelData[_param] = args[0].decode()
+            # except:
+            #     self.tmpChannelData[_param] = args[0]
 
             if self.settingTargetValue:
-                self.checkValue()
+                # self.checkValue(_param)
+                self.checkTaskStack()
         else:
             return
 
@@ -89,9 +129,10 @@ class tmOscCommunicator(tmbase.TotalmixBaseClass):
         selectedSubmixName = args[0].decode()
 
         if self.channelPropertiesFetched:
-            selectedSubmixIndex = self.channelNamesByIndex[output].index(selectedSubmixName)
+            selectedSubmixIndex = self.channelNamesByIndex[self.busOutput].index(selectedSubmixName)
 
         if mode == 2:
+            #TM output finished
             self.checkTaskStack()
         elif mode == 1:
             return
@@ -132,8 +173,9 @@ class tmOscCommunicator(tmbase.TotalmixBaseClass):
                 self.currentChIndex = self.channelNamesByIndex[self.currentLayer].index(value)
 
 
-    def oscR_dataMode1complete(self, *args):
-        self.checkTaskStack()
+    def oscR_checkTmOutMode1complete(self, chN:int):
+        if chN == self.numberFader:
+            self.checkTaskStack()
 
     def scheduleTimeOut(self, lastFunction=None, t=5):
         return Timer(t, self.timeoutFunction, args=[lastFunction])
@@ -176,14 +218,17 @@ class tmOscCommunicator(tmbase.TotalmixBaseClass):
 
         self.toTM.send_message(b'/2/track+', [1.0])
 
+
     def oscS_previousChannel(self, mode:int=2):
         if mode == 2:
             self.toTM.send_message(b'/2/track-', [1.0])
         else:
             self.toTM.send_message(b'/1/track+', [1.0])
 
+
     def oscS_goToNextBank(self):
         self.toTM.send_message(b'/1/bank+', [1.0])
+
 
     def oscS_previousBank(self):
         self.toTM.send_message(b'/1/bank-', [1.0])
@@ -216,41 +261,48 @@ class tmOscCommunicator(tmbase.TotalmixBaseClass):
             self.taskStack.insert(0, partial(self.goToFirstChannel_wBanks, mode))
             self.oscS_previousBank()
 
+
     def getDataOfSelectedChannel(self) -> dict:
         return self.channelDataByName[self.currentLayer][self.currentChannelName]
 
 
-    def checkValue(self):
-        if self.targetParameter:
-            if self.tmpChannelData[self.targetParameter] == self.targetValue:
+    def checkValue(self, parameter, value):
+        if parameter:
+            if self.tmpChannelData[parameter] == value:
                 self.settingTargetValue = False
-                self.setValuesForTargetChannels()
+                self.checkTaskStack()
+                # self.setValuesForTargetChannels()
             else:
                 self.settingTargetValue = True
-                if tmi.parameterIsToggle(self.targetParameter):
+                self.taskStack.insert(0, partial(self.checkValue, parameter, value))
+                if self.parameterIsToggle(self.targetParameter):
                     self.oscS_toggleValue(self.targetOsc)
                 else:
                     self.oscS_doSetValue(self.targetOsc, float(self.targetValue))
         else:
             print('no target parameter specified')
 
+    def checkMultipleValues(self):
+        #TODO:implement
+        pass
 
     def oscS_doSetValue(self, oscAd, value):
         self.toTM.send_message(oscAd, [value])
+
 
     def oscS_toggleValue(self, oscAd):
         self.toTM.send_message(oscAd, [1.0])
 
 
-    def setValuesForTargetChannels(self):
-        if self.targetChannels:
-            c = self.targetChannels.pop()
-            self.taskStack.append(self.checkValue)
-            self.oscS_goToChannelIndex(c)
-
-        else:
-            print('finished setting values')
-            self.finishedJobFunction()
+    # def setValuesForTargetChannels(self):
+    #     if self.targetChannels:
+    #         c = self.targetChannels.pop()
+    #         self.taskStack.append(self.checkValue)
+    #         self.oscS_goToChannelIndex(c)
+    #
+    #     else:
+    #         print('finished setting values')
+    #         self.finishedJobFunction()
 
 
     def fetchChannelProperties(self):
@@ -263,14 +315,16 @@ class tmOscCommunicator(tmbase.TotalmixBaseClass):
             if self.tmpChannelData['stereo'] == 1.0:
                 self.channelNamesByIndex[self.currentLayer].append(self.currentChannelName)
             self.channelDataByName[self.currentLayer][self.currentChannelName] = self.tmpChannelData.copy()
-            self.tmpChannelData.clear()
+            # self.tmpChannelData.clear()
+            self.initTmpData()
             self.checkChannelLimit = True
             self.taskStack.insert(0, self.fetchChannelProperties)
 
             self.oscS_goToNextChannel()
 
-#TODO: Reimplement fetch Channel Volume
-    # def fetchChannelVolume():
+    #TODO: Reimplement fetch Channel Volume
+    def initiateVolumeFetch(self):
+        print('caution volume fetching not implemented yet')
     #     global tmpChannelDataMode1, channelSends, outputReceives, outputVolumes
     #     countedFader = numberFader
     #     for idx in range(len(tmpChannelDataMode1['name'].keys())):
@@ -320,9 +374,24 @@ class tmOscCommunicator(tmbase.TotalmixBaseClass):
     #         taskStack.insert(0, fetchChannelVolume)
     #         oscS_goToNextBank()
 
+    def initiateLayoutFetch(self, fastFetch:bool=False, finishFunction=dumdumdummyfunc):
+        self.scheduleLayoutFetch(fastFetch)
+        self.taskStack.append(finishFunction)
 
-    def initiateLayoutFetch(self):
-        pass
+        self.checkTaskStack()
+
+    #TODO: implement "Fast Fetch" without Properties, layermode=1
+    def scheduleLayoutFetch(self, fastFetch:bool=False):
+        if fastFetch:
+            print('ERROR: fast fetch not implemented yet')
+            return False
+        else:
+            for _layer in [self.busOutput, self.busInput, self.busPlayback]:
+                self.taskStack.append(self.oscS_goToLayer(_layer))
+                self.taskStack.append(self.oscS_goToChannelIndex(0))
+                self.taskStack.append(self.fetchChannelProperties)
+
+
 
     def scheduleJob(self):
         pass
