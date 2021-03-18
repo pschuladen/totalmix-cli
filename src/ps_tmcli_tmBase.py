@@ -1,15 +1,18 @@
 busOutput = 'busOutput'
 busInput = 'busInput'
 busPlayback = 'busPlayback'
+total = 'total'
+
+
+
+tmLayer = {
+    'input': busInput,
+    'playback': busPlayback,
+    'output': busOutput
+}
+
 
 class TotalmixBaseClass():
-    busOutput = 'busOutput'
-    busInput = 'busInput'
-    busPlayback = 'busPlayback'
-
-    channelLayoutFetched = False
-    channelPropertiesFetched = False
-    channelVolumesFetched =False
 
     channelDataByName = {
         busOutput: {},
@@ -32,19 +35,40 @@ class TotalmixBaseClass():
         busPlayback: {}
     }
 
-    numberTmChannel = -1
-    numberChannelInLayer = {
+    numberOfChannel = {
+        'total': -1,
         busOutput: -1,
         busInput: -1,
         busPlayback: -1
     }
 
+    fetchState = {
+        'layout': False,
+        'properties': False,
+        'volumes': False
+    }
+
+    def setInitiateData(self):
+        for _lay in self.channelNamesByIndex.keys():
+            self.channelNamesByIndex[_lay] = list()
+            self.channelDataByName[_lay] = dict()
+            self.numberOfChannel[_lay] = -1
+
+            if not _lay == busOutput:
+                self.channelSends = dict()
+                self.outputReceives = dict()
+
+        self.numberOfChannel[total] = -1
+
+        for _attri in self.fetchState:
+            self.fetchState[_attri] = False
 
 
     valuesThatAreToggles = ['mute', 'phase', 'phaserRight', 'phantom', 'instrument', 'pad', "msProc", "autoset",
                             "loopback",
                             "stereo", "talkbackSel", "noTrim", "cue", "recordEnable", "playChannel", "lowcutEnable",
                             "eqEnable", "compexpEnable", "alevEnable"]
+
 
     def parameterIsToggle(self, parameter: str) -> bool:
         return parameter in self.valuesThatAreToggles
@@ -65,7 +89,9 @@ class TotalmixBaseClass():
         select: 'select/1/'
     }
 
+
     parameterInMode1 = [volume, pan, mute, solo, trackname, select]
+
 
     def evalBestModeForParam(self, parameter:str) -> int:
         return 2
@@ -77,10 +103,12 @@ class TotalmixBaseClass():
 
 
     def getChannelDataByIndex(self, layer: str, idx: int, key: str = ''):
+
         if key:
             return self.channelDataByName[layer][self.channelNamesByIndex[layer][idx]][key]
         else:
             return self.channelDataByName[layer][self.channelNamesByIndex[layer][idx]]
+
 
     def getNumberChannelOfLayer(self, layer:str=busOutput, respectStereo:bool=True) -> int:
 
@@ -91,3 +119,9 @@ class TotalmixBaseClass():
             return len(_chSet)
         else:
             return len(self.channelNamesByIndex[layer])
+
+
+    def getNumberTmChannel(self, layer:str=total) -> int:
+        return self.numberOfChannel[layer]
+
+

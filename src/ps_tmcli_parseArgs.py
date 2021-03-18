@@ -18,13 +18,10 @@ class TmAction_Set(TmAction_Base):
         super(TmAction_Set, self).__init__()
 
         # self.targetChannelString = cliArgs.channel
-        self.layerToSet = cliArgs.layer
+        self.layerToSet = tmbase.tmLayer[cliArgs.layer]
         self.parameter = cliArgs.parameter
         self.value = cliArgs.value
-        self.targetChannel = set()
-
-        self.getTargetChannelSetFromString(cliArgs.channel)
-
+        self.targetChannel = self.getTargetChannelSetFromString(cliArgs.channel)
 
 
     def createTasksList(self, osccom:[Tmosc], whenFinished=dumdumdummyfunc):
@@ -32,14 +29,16 @@ class TmAction_Set(TmAction_Base):
 
         if len(osccom) > 0:
             _tmosc: Tmosc = osccom[0]
-            _tmosc.taskStack = self.tasks
-            self.tasks.append(partial(_tmosc.oscS_goToLayer, self.layerToSet, mode))
+            # _tmosc.taskStack = self.tasks
+            _tmosc.taskStack.append(partial(_tmosc.oscS_goToLayer, self.layerToSet, mode))
+
+            _targOsc = '/2/{}'.format(self.parameter).encode()
 
             for _ch in self.targetChannel:
-                self.tasks.append(partial(_tmosc.oscS_goToChannelIndex, _ch))
-                self.tasks.append(partial(_tmosc.checkValue, self.parameter, self.value))
+                _tmosc.taskStack.append(partial(_tmosc.oscS_goToChannelIndex, _ch))
+                _tmosc.taskStack.append(partial(_tmosc.checkValue, self.parameter, self.value, _targOsc))
 
-            self.tasks.append(whenFinished)
+            _tmosc.appendFinishFunction(whenFinished)
 
         else:
             print('error setting parameter. No controller set')
@@ -93,9 +92,10 @@ class TmAction_Set(TmAction_Base):
         while (channelStrToVerify):
             chRange = channelStrToVerify.pop()
             if chRange == 'all':
-                print('all', self.numberTmChannel, 'channels')
-                for c in range(self.numberTmChannel):
+                print('all', self.getNumberTmChannel(), 'channels')
+                for c in range(self.getNumberTmChannel()):
                     outputSet.add(c)
+                print(outputSet)
             else:
                 try:
                     lowIdx = self.channelNamesByIndex[self.layerToSet].index(chRange[0])
@@ -116,7 +116,7 @@ class TmAction_Set(TmAction_Base):
                     _channelsToRemove.add(c)
                     _channelsToAdd.add(c - 1)
 
-            if c >= self.numberTmChannel:
+            if c >= self.getNumberTmChannel():
                 _channelsToRemove.add(c)
                 _limitReached = True
         for c in _channelsToRemove:
@@ -125,7 +125,7 @@ class TmAction_Set(TmAction_Base):
             outputSet.add(c)
 
         if _limitReached:
-            print('channel limit is', self.numberTmChannel, 'higher channels will not be set')
+            print('channel limit is', self.getNumberTmChannel(), 'higher channels will not be set')
 
         return outputSet
 
